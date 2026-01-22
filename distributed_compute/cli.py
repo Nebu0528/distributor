@@ -199,7 +199,7 @@ def run_demo_with_monitoring():
     print_logo()
     
     # Welcome message
-    animate_text("Welcome to Distribu", Colors.CYAN, 0.04)
+    animate_text("Welcome to Distributor", Colors.CYAN, 0.04)
     time.sleep(0.3)
     print(f"\n{Colors.DIM}Initializing distributed computing cluster...{Colors.RESET}\n")
     time.sleep(0.5)
