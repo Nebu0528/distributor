@@ -11,7 +11,7 @@ setup(
     description="A library for distributing computational workloads across multiple devices",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/distributed-compute-locally",
+    url="https://github.com/Nebu0528/distributor",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
