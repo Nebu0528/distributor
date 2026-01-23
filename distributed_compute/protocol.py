@@ -18,6 +18,9 @@ class MessageType:
     TASK_ERROR = "task_error"
     WORKER_STATUS = "worker_status"
     SHUTDOWN = "shutdown"
+    SUBMIT_JOB = "submit_job"
+    JOB_RESULT = "job_result"
+    JOB_ERROR = "job_error"
 
 
 class Protocol:

@@ -265,8 +265,12 @@ class Coordinator:
         worker_id = None
         
         try:
-            # Receive registration message
+            # Receive initial message
             msg_type, payload = Protocol.receive_message(client_socket, timeout=10.0)
+            
+            if msg_type == MessageType.SUBMIT_JOB:
+                self._handle_client_job(client_socket, payload)
+                return
             
             if msg_type != MessageType.REGISTER_WORKER:
                 logger.error("Expected registration message")
@@ -292,14 +296,20 @@ class Coordinator:
                 "worker_id": worker_id
             })
             
-            # Distribute any pending tasks
-            self._distribute_tasks()
+            # Don't call _distribute_tasks() here - it will be called from map()
+            # This prevents deadlock between sending tasks and receiving messages
             
             # Listen for messages from worker
             while self._running and worker.is_alive:
-                msg_type, payload = Protocol.receive_message(client_socket, timeout=5.0)
+                try:
+                    msg_type, payload = Protocol.receive_message(client_socket, timeout=5.0)
+                except socket.timeout:
+                    # No message yet; keep worker alive and try distributing tasks
+                    self._distribute_tasks()
+                    continue
                 
                 if msg_type is None:
+                    # Connection closed or empty read
                     continue
                 
                 if msg_type == MessageType.HEARTBEAT:
@@ -307,16 +317,17 @@ class Coordinator:
                 
                 elif msg_type == MessageType.TASK_RESULT:
                     self._handle_task_result(worker_id, payload)
+                    # After task completion, try to send more tasks
+                    self._distribute_tasks()
                 
                 elif msg_type == MessageType.TASK_ERROR:
                     self._handle_task_error(worker_id, payload)
+                    # After task error, try to redistribute
+                    self._distribute_tasks()
                 
                 elif msg_type == MessageType.SHUTDOWN:
                     logger.info(f"Worker {worker.name} disconnecting")
                     break
-                    
-        except socket.timeout:
-            pass
         except Exception as e:
             logger.error(f"Error handling worker: {e}")
         finally:
@@ -364,8 +375,7 @@ class Coordinator:
         # Add result to queue
         self.result_queue.put((task_id, result, None))
         
-        # Try to assign more tasks to this worker
-        self._distribute_tasks()
+        # Task distribution now happens in _handle_worker loop
     
     def _handle_task_error(self, worker_id: str, payload: dict):
         """Handle task error from worker."""
@@ -391,6 +401,29 @@ class Coordinator:
         
         # Add error to result queue
         self.result_queue.put((task_id, None, error))
+
+    def _handle_client_job(self, client_socket: socket.socket, payload: dict):
+        """Handle a client job submission and return results."""
+        try:
+            func = payload["func"]
+            iterable = payload["iterable"]
+            timeout = payload.get("timeout")
+            chunk_size = payload.get("chunk_size", 1)
+
+            results = self.map(func, iterable, timeout=timeout, chunk_size=chunk_size)
+
+            Protocol.send_message(client_socket, MessageType.JOB_RESULT, {
+                "results": results
+            })
+        except Exception as exc:
+            Protocol.send_message(client_socket, MessageType.JOB_ERROR, {
+                "error": str(exc)
+            })
+        finally:
+            try:
+                client_socket.close()
+            except Exception:
+                pass
     
     def _distribute_tasks(self):
         """Distribute pending tasks to available workers."""

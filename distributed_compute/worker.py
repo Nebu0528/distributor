@@ -57,8 +57,13 @@ class Worker:
         self._lock = threading.Lock()
         self._threads = []
     
-    def start(self):
-        """Start the worker and connect to the coordinator."""
+    def start(self, block: bool = False):
+        """Start the worker and connect to the coordinator.
+
+        Args:
+            block: When True, block the calling thread and keep the worker running.
+                   When False, return immediately (useful for tests and programmatic use).
+        """
         logger.info(f"Starting worker '{self.name}'...")
         
         try:
@@ -67,13 +72,21 @@ class Worker:
             
             self.running = True
             
+            # Start listening for tasks
+            listen_thread = threading.Thread(
+                target=self._listen_for_tasks,
+                daemon=not block
+            )
+            listen_thread.start()
+            self._threads.append(listen_thread)
+            
             # Start heartbeat thread
             heartbeat_thread = threading.Thread(target=self._send_heartbeats, daemon=True)
             heartbeat_thread.start()
             self._threads.append(heartbeat_thread)
             
-            # Start listening for tasks
-            self._listen_for_tasks()
+            if block:
+                listen_thread.join()
             
         except KeyboardInterrupt:
             logger.info("Worker interrupted by user")
