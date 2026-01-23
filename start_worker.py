@@ -25,7 +25,7 @@ worker = Worker(
 print(f"→ Connecting to coordinator at {coordinator_host}:5555...\n")
 
 try:
-    worker.start()
+    worker.start(block=True)
 except KeyboardInterrupt:
     print(f"\n\n✅ Worker {worker_name} stopped")
     print(f"   Total tasks completed: {worker.tasks_completed}\n")

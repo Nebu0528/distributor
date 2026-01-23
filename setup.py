@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="distributed-compute-locally",
-    version="0.1.2",
+    version="0.1.3",
     author="Nebu0528",
     author_email="nebu0528distributor@gmail.com",
     description="A library for distributing computational workloads across multiple devices",
