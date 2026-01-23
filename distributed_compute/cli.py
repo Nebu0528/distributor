@@ -12,8 +12,30 @@ import time
 import threading
 import os
 import logging
+import importlib.util
 from datetime import datetime
 from distributed_compute import Coordinator, Worker
+
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.patch_stdout import patch_stdout
+    from prompt_toolkit.styles import Style
+    from prompt_toolkit.formatted_text import HTML
+    PROMPT_TOOLKIT_AVAILABLE = True
+except Exception:
+    PROMPT_TOOLKIT_AVAILABLE = False
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.live import Live
+    from rich.table import Table
+    from rich.layout import Layout
+    from rich.text import Text
+    RICH_AVAILABLE = True
+except Exception:
+    RICH_AVAILABLE = False
 
 # Disable noisy logs
 logging.getLogger('distributed_compute').setLevel(logging.ERROR)
@@ -104,34 +126,232 @@ def run_coordinator_cli(port=5555):
     
     print(f" {Colors.GREEN}✓{Colors.RESET}")
     print(f"\n{Colors.GREEN}✓{Colors.RESET} Listening on port {Colors.CYAN}{port}{Colors.RESET}")
-    print(f"{Colors.DIM}Waiting for workers to connect...{Colors.RESET}\n")
+    print(f"{Colors.DIM}Ready for workers and commands...{Colors.RESET}\n")
     print(f"{Colors.GRAY}{'─' * 60}{Colors.RESET}\n")
     
-    start_time = time.time()
-    last_workers = 0
-    last_completed = 0
+    # Print interactive prompt info BEFORE starting monitor thread
+    use_prompt_toolkit = _use_prompt_toolkit()
+    if use_prompt_toolkit:
+        print(f"{Colors.GREEN}✓{Colors.RESET} {Colors.BOLD}Interactive mode enabled{Colors.RESET} - Type 'help' for commands", flush=True)
+        print(f"{Colors.DIM}Using textbox prompt. Press Enter to submit.{Colors.RESET}\n", flush=True)
+    else:
+        print(f"{Colors.GREEN}✓{Colors.RESET} {Colors.BOLD}Interactive mode enabled{Colors.RESET} - Type 'help' for commands", flush=True)
+        print(f"{Colors.DIM}Using standard input. Press Enter to submit.{Colors.RESET}\n", flush=True)
+
+    stop_event = threading.Event()
+    monitor_thread = threading.Thread(
+        target=_monitor_coordinator,
+        args=(coordinator, stop_event),
+        daemon=True
+    )
+    monitor_thread.start()
     
+    # Give a tiny moment for monitor thread to start
+    time.sleep(0.1)
+
     try:
-        while True:
-            time.sleep(1)
-            stats = coordinator.get_stats()
-            
-            # Only print when something changes
-            if stats['workers'] != last_workers:
-                if stats['workers'] > last_workers:
-                    print(f"{Colors.GREEN}●{Colors.RESET} Worker connected {Colors.DIM}(total: {stats['workers']}){Colors.RESET}")
-                last_workers = stats['workers']
-            
-            if stats['tasks_completed'] != last_completed:
-                if stats['tasks_completed'] > 0:
-                    print(f"{Colors.CYAN}▸{Colors.RESET} Tasks completed: {Colors.BOLD}{stats['tasks_completed']}{Colors.RESET}")
-                last_completed = stats['tasks_completed']
-            
+        _interactive_prompt_loop(coordinator, stop_event, use_prompt_toolkit)
     except KeyboardInterrupt:
+        pass
+    finally:
+        stop_event.set()
         print(f"\n{Colors.GRAY}{'─' * 60}{Colors.RESET}")
         print(f"\n{Colors.DIM}Shutting down coordinator...{Colors.RESET}")
         coordinator.stop_server()
         print(f"{Colors.GREEN}✓{Colors.RESET} Stopped\n")
+
+
+def _load_task_module(path: str):
+    """Load a python file and return (task_func, iterable)."""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"File not found: {path}")
+
+    module_name = f"distcompute_task_{int(time.time() * 1000)}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if not spec or not spec.loader:
+        raise ImportError(f"Unable to load module from {path}")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    task_func = getattr(module, "TASK_FUNC", None) or getattr(module, "task_fn", None) or getattr(module, "task", None)
+    iterable = getattr(module, "ITERABLE", None) or getattr(module, "items", None) or getattr(module, "data", None)
+
+    if task_func is None or iterable is None:
+        raise ValueError("Task file must define TASK_FUNC (callable) and ITERABLE (iterable)")
+
+    return task_func, iterable
+
+
+def _interactive_prompt_loop(coordinator: Coordinator, stop_event: threading.Event, use_prompt_toolkit: bool):
+    """Interactive prompt loop for running task files."""
+    if use_prompt_toolkit and RICH_AVAILABLE:
+        # Rich + prompt_toolkit combo for Claude/Gemini-style UI
+        console = Console()
+        
+        # Custom prompt style
+        prompt_style = Style.from_dict({
+            'prompt': 'cyan bold',
+            'toolbar': 'bg:#222222 #888888',
+        })
+        
+        session = PromptSession(style=prompt_style)
+        bindings = KeyBindings()
+        
+        @bindings.add("enter")
+        def _submit(event):
+            event.current_buffer.validate_and_handle()
+        
+        # Show welcome panel
+        console.print(Panel.fit(
+            "[cyan bold]Interactive Command Mode[/cyan bold]\n"
+            "[dim]Type commands below. Worker notifications appear above.[/dim]",
+            border_style="cyan"
+        ))
+        console.print()
+    
+    elif use_prompt_toolkit:
+        # Basic prompt_toolkit without rich
+        session = PromptSession()
+        bindings = KeyBindings()
+        console = None
+        
+        @bindings.add("enter")
+        def _submit(event):
+            event.current_buffer.validate_and_handle()
+    else:
+        session = None
+        bindings = None
+        console = None
+    
+    while True:
+        try:
+            if use_prompt_toolkit:
+                with patch_stdout():
+                    raw = session.prompt(
+                        HTML("<ansicyan><b>distcompute></b></ansicyan> "),
+                        bottom_toolbar="Commands: run <file.py> | status | help | exit",
+                        multiline=False,
+                        key_bindings=bindings,
+                    )
+            else:
+                raw = input(f"{Colors.CYAN}distcompute>{Colors.RESET} ")
+            
+            raw = raw.strip()
+            if not raw:
+                continue
+            if raw in {"exit", "quit"}:
+                break
+            if raw == "status":
+                stats = coordinator.get_stats()
+                if console:
+                    # Create a nice table with worker details
+                    table = Table(title="Cluster Status", show_header=True, header_style="bold cyan")
+                    table.add_column("Metric", style="cyan", no_wrap=True)
+                    table.add_column("Value", style="bold")
+                    
+                    table.add_row("Workers", f"{stats['workers']}")
+                    table.add_row("Tasks Pending", f"{stats['tasks_pending']}")
+                    table.add_row("Tasks Completed", f"{stats['tasks_completed']}")
+                    
+                    console.print(table)
+                    
+                    # Show individual worker stats if available
+                    if stats.get('worker_details') and len(stats['worker_details']) > 0:
+                        console.print()
+                        worker_table = Table(title="Worker Details", show_header=True, header_style="bold cyan")
+                        worker_table.add_column("Worker", style="cyan")
+                        worker_table.add_column("CPU %", justify="right")
+                        worker_table.add_column("Tasks Done", justify="right")
+                        worker_table.add_column("Active", justify="right")
+                        
+                        for w in stats['worker_details']:
+                            cpu = f"{w.get('cpu_percent', 0):.1f}%"
+                            tasks = str(w.get('tasks_completed', 0))
+                            active = str(w.get('current_tasks', 0))
+                            worker_table.add_row(w['name'], cpu, tasks, active)
+                        
+                        console.print(worker_table)
+                    console.print()
+                else:
+                    print(f"Workers: {stats['workers']}, Pending: {stats['tasks_pending']}, Completed: {stats['tasks_completed']}")
+                continue
+            if raw == "help":
+                if console:
+                    console.print(Panel(
+                        "[cyan bold]run <file.py>[/cyan bold] - Execute a task file across workers\n"
+                        "[cyan bold]status[/cyan bold]        - Show cluster status\n"
+                        "[cyan bold]help[/cyan bold]          - Show this help message\n"
+                        "[cyan bold]exit[/cyan bold]          - Shutdown coordinator",
+                        title="[bold]Available Commands[/bold]",
+                        border_style="cyan"
+                    ))
+                else:
+                    print(f"\n{Colors.BOLD}Available commands:{Colors.RESET}")
+                    print(f"  {Colors.CYAN}run <file.py>{Colors.RESET} - Execute a task file across workers")
+                    print(f"  {Colors.CYAN}status{Colors.RESET}        - Show cluster status")
+                    print(f"  {Colors.CYAN}help{Colors.RESET}          - Show this help message")
+                    print(f"  {Colors.CYAN}exit{Colors.RESET}          - Shutdown coordinator\n")
+                continue
+            if raw.startswith("run "):
+                path = raw.split(" ", 1)[1].strip()
+                try:
+                    task_func, iterable = _load_task_module(path)
+                    workers = coordinator.get_stats()['workers']
+                    if console:
+                        console.print(f"[cyan]Running {path} across {workers} worker(s)...[/cyan]")
+                    else:
+                        print(f"{Colors.CYAN}Running {path} across {workers} workers...{Colors.RESET}")
+                    results = coordinator.map(task_func, list(iterable))
+                    if console:
+                        console.print(f"[green]✓[/green] Results: {results}\n")
+                    else:
+                        print(f"{Colors.GREEN}✓{Colors.RESET} Results: {results}\n")
+                except Exception as e:
+                    if console:
+                        console.print(f"[red]Error: {e}[/red]\n")
+                    else:
+                        print(f"{Colors.RED}Error: {e}{Colors.RESET}\n")
+                continue
+            if console:
+                console.print(f"[yellow]Unknown command. Type 'help' for available commands.[/yellow]")
+            else:
+                print(f"{Colors.YELLOW}Unknown command. Type 'help' for available commands.{Colors.RESET}")
+        except EOFError:
+            break
+        except Exception as exc:
+            if console:
+                console.print(f"[red]Error: {exc}[/red]")
+            else:
+                print(f"{Colors.RED}Error: {exc}{Colors.RESET}")
+    stop_event.set()
+
+
+def _interactive_prompt(coordinator: Coordinator, stop_event: threading.Event | None = None):
+    """Interactive prompt for running task files (legacy wrapper)."""
+    use_prompt_toolkit = _use_prompt_toolkit()
+    print(f"{Colors.GRAY}Interactive mode ready. Type 'run <file.py>' or 'status'.{Colors.RESET}", flush=True)
+    if use_prompt_toolkit:
+        print(f"{Colors.DIM}Textbox mode enabled. Press Ctrl+Enter to submit.{Colors.RESET}", flush=True)
+    else:
+        print(f"{Colors.DIM}Textbox mode unavailable (TTY or dependency missing).{Colors.RESET}", flush=True)
+    _interactive_prompt_loop(coordinator, stop_event or threading.Event(), use_prompt_toolkit)
+
+
+def _monitor_coordinator(coordinator: Coordinator, stop_event: threading.Event):
+    """Silent monitor - notifications disabled since we have interactive status command."""
+    # Just keep coordinator alive, no output
+    # Users can type 'status' anytime to check
+    while not stop_event.is_set():
+        time.sleep(1)
+
+
+def _use_prompt_toolkit() -> bool:
+    if not PROMPT_TOOLKIT_AVAILABLE:
+        return False
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return False
+    return True
 
 
 def run_worker_cli(host='localhost', port=5555, name=None):
@@ -184,6 +404,7 @@ def run_worker_cli(host='localhost', port=5555, name=None):
     else:
         print(f" {Colors.RED}✗{Colors.RESET}")
         print(f"\n{Colors.RED}✗{Colors.RESET} Could not connect to coordinator\n")
+
 
 
 def animate_text(text, color=Colors.CYAN, delay=0.03):
@@ -382,7 +603,7 @@ def print_usage():
     print(f"    Start coordinator with live monitoring")
     print()
     print(f"  {Colors.CYAN}distcompute worker <host> [port] [name]{Colors.RESET}")
-    print(f"    Start worker and connect to coordinator")
+    print(f"    Start worker and connect to coordinator (host defaults to localhost)")
     print()
     print(f"  {Colors.CYAN}distcompute demo{Colors.RESET}")
     print(f"    Run interactive demo with live monitoring")
@@ -393,6 +614,7 @@ def print_usage():
     print(f"  distcompute coordinator")
     print()
     print(f"  {Colors.DIM}# Start worker connecting to localhost{Colors.RESET}")
+    print(f"  distcompute worker")
     print(f"  distcompute worker localhost")
     print()
     print(f"  {Colors.DIM}# Start worker with custom name{Colors.RESET}")
@@ -416,12 +638,7 @@ def main():
             run_coordinator_cli(port)
         
         elif command == "worker":
-            if len(sys.argv) < 3:
-                print(f"{Colors.RED}Error: Worker requires host argument{Colors.RESET}")
-                print(f"Usage: python cli.py worker <host> [port] [name]")
-                sys.exit(1)
-            
-            host = sys.argv[2]
+            host = sys.argv[2] if len(sys.argv) > 2 else "localhost"
             port = int(sys.argv[3]) if len(sys.argv) > 3 else 5555
             name = sys.argv[4] if len(sys.argv) > 4 else None
             run_worker_cli(host, port, name)

@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="distributed-compute-locally",
-    version="0.1.3",
+    version="0.1.4",
     author="Nebu0528",
     author_email="nebu0528distributor@gmail.com",
     description="A library for distributing computational workloads across multiple devices",
@@ -31,6 +31,8 @@ setup(
     install_requires=[
         "cloudpickle>=2.0.0",
         "psutil>=5.8.0",
+        "prompt_toolkit>=3.0.0",
+        "rich>=13.0.0",
     ],
     extras_require={
         "dev": [

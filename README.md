@@ -9,9 +9,11 @@ Distributed Compute allows you to easily harness the power of multiple machines 
 ## Features
 
 - **Simple Setup** - Get started with just 2 commands
+- **Interactive CLI** - Beautiful terminal interface with Rich UI (v0.1.4+)
+- **Live Worker Stats** - Monitor CPU usage, task counts, and active workers
 - **Automatic Load Balancing** - Tasks distributed to least-loaded workers
 - **Fault Tolerance** - Automatic task redistribution on worker failure
-- **Real-time Monitoring** - Beautiful CLI with live progress tracking
+- **Real-time Monitoring** - Live progress tracking and status updates
 - **Clean API** - Pythonic interface similar to `multiprocessing.Pool`
 - **Plug & Play** - No complex configuration required
 
@@ -33,6 +35,8 @@ On your main machine:
 distcompute coordinator
 ```
 
+This starts an **interactive coordinator** with a beautiful CLI where you can run commands, check status, and execute tasks directly.
+
 ### 2. Connect Workers
 
 On each worker machine (laptops, desktops, etc.):
@@ -41,7 +45,13 @@ On each worker machine (laptops, desktops, etc.):
 distcompute worker <coordinator-ip>
 ```
 
-Example:
+Or on the same machine for local testing:
+```bash
+distcompute worker
+# Defaults to localhost
+```
+
+Example with remote coordinator:
 ```bash
 distcompute worker 192.168.1.100
 ```
@@ -165,15 +175,82 @@ results = coordinator.map(process_file, file_list)
 The `distcompute` command provides several options:
 
 ```bash
-# Start coordinator
+# Start coordinator (with interactive mode)
 distcompute coordinator [port]
 
-# Connect worker
-distcompute worker <host> [port] [name]
+# Connect worker (host defaults to localhost)
+distcompute worker [host] [port] [name]
 
 # Run demo
 distcompute demo
 ```
+
+### Interactive Coordinator Mode (New in v0.1.4!)
+
+When you start the coordinator, it now launches an **interactive terminal** with a beautiful CLI interface (powered by Rich and prompt_toolkit):
+
+```bash
+distcompute coordinator
+```
+
+You'll see a prompt where you can run commands:
+
+```
+distcompute> help
+
+Available Commands:
+  run <file.py>  - Execute a task file across workers
+  status         - Show cluster status with worker stats
+  help           - Show this help message
+  exit           - Shutdown coordinator
+```
+
+**Example task file** (`my_task.py`):
+```python
+def square(x):
+    return x * x
+
+TASK_FUNC = square
+ITERABLE = range(20)
+```
+
+**Running tasks interactively**:
+```
+distcompute> status
+┌──────────────────────────────────────┐
+│         Cluster Status              │
+├────────────────┬────────────────────┤
+│ Metric         │ Value              │
+├────────────────┼────────────────────┤
+│ Workers        │ 2                  │
+│ Tasks Pending  │ 0                  │
+│ Tasks Completed│ 20                 │
+└────────────────┴────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│              Worker Details                             │
+├──────────────┬────────────┬─────────────┬──────────────┤
+│ Worker       │ CPU %      │ Tasks Done  │ Active       │
+├──────────────┼────────────┼─────────────┼──────────────┤
+│ worker-1     │ 25.4%      │ 12          │ 0            │
+│ worker-2     │ 18.7%      │ 8           │ 0            │
+└──────────────┴────────────┴─────────────┴──────────────┘
+
+distcompute> run my_task.py
+Running my_task.py across 2 worker(s)...
+✓ Results: [0, 1, 4, 9, 16, 25, 36, 49, 64, 81, 100, ...]
+
+distcompute> exit
+Shutting down coordinator...
+```
+
+The interactive mode features:
+- 🎨 **Beautiful UI** with bordered panels and tables (Claude/Gemini style)
+- 📊 **Worker Statistics** showing CPU usage, tasks completed, and active tasks
+- ⚡ **Direct Task Execution** - run Python files directly from the coordinator
+- 🔄 **Live Status Updates** - check cluster health anytime with `status` command
+
+### Progress Tracking (New in v0.1.2!)
 
 ## Architecture
 
@@ -219,6 +296,7 @@ distcompute worker 192.168.1.100 5555 my-worker-name
 - Python 3.7 or higher
 - Network connectivity between machines
 - Same Python environment on all workers (recommended)
+- `prompt_toolkit>=3.0.0` and `rich>=13.0.0` (auto-installed for interactive CLI)
 
 ## Examples
 
