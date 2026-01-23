@@ -4,12 +4,6 @@
 
 A Python library for distributing computational workloads across multiple devices on a local network. Turn your spare laptops, desktops, and servers into a unified computing cluster with just a few commands.
 
-<br>
-<p align="center">
-<img src="https://raw.githubusercontent.com/Nebu0528/distributor/main/img/logo.png" style="width:60%" onerror="this.style.display='none'"/>
-</p>
-<br>
-
 Distributed Compute allows you to easily harness the power of multiple machines to process large workloads in parallel. Whether you're training ML models, processing data, or running simulations, this library makes distributed computing accessible without complex cluster management tools.
 
 ## Features
@@ -99,6 +93,38 @@ def square(x):
 
 results = coordinator.map(square, range(100))
 ```
+
+### Progress Tracking (New in v0.1.2!)
+
+Track computation progress in real-time with callbacks:
+
+```python
+from distributed_compute import Coordinator
+
+coordinator = Coordinator(port=5555)
+coordinator.start()
+
+def process_task(x):
+    return x ** 2
+
+# Progress bar callback
+def show_progress(completed, total):
+    percent = (completed / total) * 100
+    print(f"Progress: {completed}/{total} ({percent:.1f}%)")
+
+# Per-task callback
+def on_task_done(task_idx, result):
+    print(f"Task {task_idx} completed: {result}")
+
+results = coordinator.map(
+    process_task, 
+    range(100),
+    on_progress=show_progress,      # Called after each task
+    on_task_complete=on_task_done   # Called with task details
+)
+```
+
+See `examples/progress_callback_example.py` for more advanced usage including ETA calculation and custom progress trackers.
 
 ### ML Model Inference
 

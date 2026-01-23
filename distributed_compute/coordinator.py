@@ -126,6 +126,8 @@ class Coordinator:
         iterable: List[Any],
         timeout: Optional[float] = None,
         chunk_size: int = 1,
+        on_progress: Optional[Callable[[int, int], None]] = None,
+        on_task_complete: Optional[Callable[[int, Any], None]] = None,
     ) -> List[Any]:
         """
         Distribute function execution across workers (similar to multiprocessing.Pool.map).
@@ -135,6 +137,8 @@ class Coordinator:
             iterable: List of items to process
             timeout: Maximum time to wait for all results (in seconds)
             chunk_size: Number of items per task (not yet implemented)
+            on_progress: Callback function(completed, total) called after each task completes
+            on_task_complete: Callback function(task_index, result) called when each task finishes
         
         Returns:
             List of results in the same order as the input iterable
@@ -165,6 +169,7 @@ class Coordinator:
         # Wait for results
         start_time = time.time()
         results = {}
+        task_index_map = {task.task_id: i for i, task in enumerate(tasks)}
         
         while len(results) < len(tasks):
             if timeout and (time.time() - start_time) > timeout:
@@ -179,9 +184,26 @@ class Coordinator:
                     results[task_id] = None
                 else:
                     results[task_id] = result
+                
+                # Call progress callbacks
+                completed = len(results)
+                total = len(tasks)
+                
+                if on_progress:
+                    try:
+                        on_progress(completed, total)
+                    except Exception as e:
+                        logger.error(f"Progress callback error: {e}")
+                
+                if on_task_complete:
+                    try:
+                        task_idx = task_index_map.get(task_id, -1)
+                        on_task_complete(task_idx, results[task_id])
+                    except Exception as e:
+                        logger.error(f"Task complete callback error: {e}")
                     
                 if self.verbose:
-                    logger.info(f"Progress: {len(results)}/{len(tasks)} tasks completed")
+                    logger.info(f"Progress: {completed}/{total} tasks completed")
                     
             except queue.Empty:
                 # Check if we need to redistribute tasks from dead workers
