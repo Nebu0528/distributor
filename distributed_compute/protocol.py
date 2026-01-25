@@ -12,6 +12,7 @@ class MessageType:
     """Message types for coordinator-worker communication."""
     REGISTER_WORKER = "register_worker"
     WORKER_REGISTERED = "worker_registered"
+    AUTH_FAILED = "auth_failed"
     HEARTBEAT = "heartbeat"
     TASK_ASSIGNMENT = "task_assignment"
     TASK_RESULT = "task_result"

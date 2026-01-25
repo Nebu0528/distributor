@@ -30,6 +30,7 @@ class Worker:
         max_concurrent_tasks: int = 2,
         name: Optional[str] = None,
         heartbeat_interval: float = 5.0,
+        password: Optional[str] = None,
     ):
         """
         Initialize a worker node.
@@ -40,12 +41,14 @@ class Worker:
             max_concurrent_tasks: Maximum number of tasks to run concurrently
             name: Optional name for this worker
             heartbeat_interval: Seconds between heartbeat messages
+            password: Optional password for coordinator authentication
         """
         self.coordinator_host = coordinator_host
         self.coordinator_port = coordinator_port
         self.max_concurrent_tasks = max_concurrent_tasks
         self.name = name or f"worker-{socket.gethostname()}"
         self.heartbeat_interval = heartbeat_interval
+        self.password = password
         
         self.worker_id = None
         self.socket = None
@@ -136,6 +139,10 @@ class Worker:
             "memory_available": memory.available,
         }
         
+        # Add password if provided
+        if self.password:
+            payload["password"] = self.password
+        
         Protocol.send_message(self.socket, MessageType.REGISTER_WORKER, payload)
         
         # Wait for registration confirmation
@@ -144,6 +151,9 @@ class Worker:
         if msg_type == MessageType.WORKER_REGISTERED:
             self.worker_id = payload["worker_id"]
             logger.info(f"Registered with coordinator. Worker ID: {self.worker_id}")
+        elif msg_type == MessageType.AUTH_FAILED:
+            reason = payload.get("reason", "Authentication failed")
+            raise WorkerConnectionError(f"Authentication failed: {reason}")
         else:
             raise WorkerConnectionError("Failed to register with coordinator")
     

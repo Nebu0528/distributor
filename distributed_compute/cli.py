@@ -110,14 +110,14 @@ def animate_text(text, color=Colors.CYAN, delay=0.03):
     print()
 
 
-def run_coordinator_cli(port=5555):
+def run_coordinator_cli(port=5555, password=None):
     """Run coordinator with beautiful CLI monitoring."""
     print_logo()
     
     print(f"{Colors.BOLD}Coordinator Mode{Colors.RESET}\n")
     print(f"{Colors.GRAY}→{Colors.RESET} Initializing", end='', flush=True)
     
-    coordinator = Coordinator(port=port, verbose=False)
+    coordinator = Coordinator(port=port, verbose=False, password=password)
     coordinator.start_server()
     
     for _ in range(3):
@@ -126,6 +126,12 @@ def run_coordinator_cli(port=5555):
     
     print(f" {Colors.GREEN}✓{Colors.RESET}")
     print(f"\n{Colors.GREEN}✓{Colors.RESET} Listening on port {Colors.CYAN}{port}{Colors.RESET}")
+    
+    if password:
+        print(f"{Colors.GREEN}✓{Colors.RESET} Password authentication {Colors.GREEN}enabled{Colors.RESET}")
+    else:
+        print(f"{Colors.YELLOW}⚠{Colors.RESET}  Password authentication {Colors.YELLOW}disabled{Colors.RESET} - anyone can connect")
+    
     print(f"{Colors.DIM}Ready for workers and commands...{Colors.RESET}\n")
     print(f"{Colors.GRAY}{'─' * 60}{Colors.RESET}\n")
     
@@ -354,7 +360,7 @@ def _use_prompt_toolkit() -> bool:
     return True
 
 
-def run_worker_cli(host='localhost', port=5555, name=None):
+def run_worker_cli(host='localhost', port=5555, name=None, password=None):
     """Run worker with beautiful CLI monitoring."""
     print_logo()
     
@@ -367,7 +373,8 @@ def run_worker_cli(host='localhost', port=5555, name=None):
         coordinator_host=host,
         coordinator_port=port,
         max_concurrent_tasks=2,
-        name=worker_name
+        name=worker_name,
+        password=password
     )
     
     worker_thread = threading.Thread(target=worker.start, daemon=True)
@@ -599,10 +606,10 @@ def print_usage():
     print_header("🖥️  DISTRIBUTED COMPUTE CLI")
     
     print(f"{Colors.BOLD}USAGE:{Colors.RESET}")
-    print(f"  {Colors.CYAN}distcompute coordinator [port]{Colors.RESET}")
+    print(f"  {Colors.CYAN}distcompute coordinator [port] [--password <password>]{Colors.RESET}")
     print(f"    Start coordinator with live monitoring")
     print()
-    print(f"  {Colors.CYAN}distcompute worker <host> [port] [name]{Colors.RESET}")
+    print(f"  {Colors.CYAN}distcompute worker <host> [port] [name] [--password <password>]{Colors.RESET}")
     print(f"    Start worker and connect to coordinator (host defaults to localhost)")
     print()
     print(f"  {Colors.CYAN}distcompute demo{Colors.RESET}")
@@ -613,12 +620,15 @@ def print_usage():
     print(f"  {Colors.DIM}# Start coordinator on default port{Colors.RESET}")
     print(f"  distcompute coordinator")
     print()
+    print(f"  {Colors.DIM}# Start coordinator with password protection{Colors.RESET}")
+    print(f"  distcompute coordinator 5555 --password mySecretPass123")
+    print()
     print(f"  {Colors.DIM}# Start worker connecting to localhost{Colors.RESET}")
     print(f"  distcompute worker")
     print(f"  distcompute worker localhost")
     print()
-    print(f"  {Colors.DIM}# Start worker with custom name{Colors.RESET}")
-    print(f"  distcompute worker 192.168.1.100 5555 my-worker")
+    print(f"  {Colors.DIM}# Start worker with password{Colors.RESET}")
+    print(f"  distcompute worker 192.168.1.100 5555 my-worker --password mySecretPass123")
     print()
     print(f"  {Colors.DIM}# Run demo{Colors.RESET}")
     print(f"  distcompute demo")
@@ -634,14 +644,60 @@ def main():
     
     try:
         if command == "coordinator":
-            port = int(sys.argv[2]) if len(sys.argv) > 2 else 5555
-            run_coordinator_cli(port)
+            port = 5555
+            password = None
+            
+            # Parse arguments
+            args = sys.argv[2:]
+            i = 0
+            while i < len(args):
+                if args[i] == "--password" and i + 1 < len(args):
+                    password = args[i + 1]
+                    i += 2
+                elif args[i].startswith("--"):
+                    i += 1  # Skip unknown flags
+                else:
+                    # First non-flag argument is port
+                    try:
+                        port = int(args[i])
+                    except ValueError:
+                        pass
+                    i += 1
+            
+            run_coordinator_cli(port, password)
         
         elif command == "worker":
-            host = sys.argv[2] if len(sys.argv) > 2 else "localhost"
-            port = int(sys.argv[3]) if len(sys.argv) > 3 else 5555
-            name = sys.argv[4] if len(sys.argv) > 4 else None
-            run_worker_cli(host, port, name)
+            host = "localhost"
+            port = 5555
+            name = None
+            password = None
+            
+            # Parse arguments
+            args = sys.argv[2:]
+            positional = []
+            i = 0
+            while i < len(args):
+                if args[i] == "--password" and i + 1 < len(args):
+                    password = args[i + 1]
+                    i += 2
+                elif args[i].startswith("--"):
+                    i += 1  # Skip unknown flags
+                else:
+                    positional.append(args[i])
+                    i += 1
+            
+            # Assign positional arguments
+            if len(positional) > 0:
+                host = positional[0]
+            if len(positional) > 1:
+                try:
+                    port = int(positional[1])
+                except ValueError:
+                    pass
+            if len(positional) > 2:
+                name = positional[2]
+            
+            run_worker_cli(host, port, name, password)
         
         elif command == "demo":
             run_demo_with_monitoring()

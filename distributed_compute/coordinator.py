@@ -13,6 +13,7 @@ import queue
 from .protocol import Protocol, MessageType
 from .task import Task, TaskStatus
 from .exceptions import TimeoutError as DistributedTimeoutError
+from .auth import AuthManager
 
 
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +48,7 @@ class Coordinator:
         port: int = 5000,
         verbose: bool = False,
         worker_timeout: float = 30.0,
+        password: Optional[str] = None,
     ):
         """
         Initialize the coordinator.
@@ -56,11 +58,17 @@ class Coordinator:
             port: Port number to listen on
             verbose: Enable verbose logging
             worker_timeout: Seconds before marking a worker as dead
+            password: Optional password for worker authentication
         """
         self.host = host
         self.port = port
         self.verbose = verbose
         self.worker_timeout = worker_timeout
+        
+        # Initialize authentication
+        self.auth_manager = AuthManager(password)
+        if password:
+            logger.info("Password authentication enabled")
         
         if verbose:
             logger.setLevel(logging.DEBUG)
@@ -220,7 +228,7 @@ class Coordinator:
     def get_stats(self) -> dict:
         """Get statistics about the coordinator and workers."""
         with self._lock:
-            return {
+            stats = {
                 "workers": len([w for w in self.workers.values() if w.is_alive]),
                 "tasks_pending": len(self.task_queue) + len(self.pending_tasks),
                 "tasks_completed": len(self.completed_tasks),
@@ -235,6 +243,12 @@ class Coordinator:
                     for w in self.workers.values() if w.is_alive
                 ]
             }
+            
+            # Add authentication stats if auth manager exists
+            if self.auth_manager:
+                stats["authentication"] = self.auth_manager.get_stats()
+            
+            return stats
     
     def _accept_workers(self):
         """Accept incoming worker connections."""
@@ -277,17 +291,40 @@ class Coordinator:
                 client_socket.close()
                 return
             
+            # Extract worker info and password
+            worker_name = payload.get("name", "unknown")
+            worker_password = payload.get("password")
+            
+            # Check authentication (only if auth is enabled)
+            if self.auth_manager:
+                can_connect, reason = self.auth_manager.can_worker_connect(worker_name, worker_password)
+                
+                if not can_connect:
+                    logger.warning(f"Worker {worker_name} from {address} authentication failed: {reason}")
+                    Protocol.send_message(client_socket, MessageType.AUTH_FAILED, {
+                        "reason": reason
+                    })
+                    client_socket.close()
+                    return
+                
+                if self.auth_manager.password:
+                    logger.info(f"Worker {worker_name} authenticated successfully")
+            
             # Register worker
             worker_id = f"worker-{len(self.workers)}-{int(time.time())}"
             worker = WorkerInfo(
                 worker_id=worker_id,
                 socket=client_socket,
-                name=payload["name"],
+                name=worker_name,
                 max_tasks=payload["max_concurrent_tasks"]
             )
             
             with self._lock:
                 self.workers[worker_id] = worker
+            
+            # Register connection with auth manager (only if auth is enabled)
+            if self.auth_manager:
+                self.auth_manager.register_connection(worker_name)
             
             logger.info(f"Registered worker: {worker.name} (ID: {worker_id})")
             
@@ -334,7 +371,11 @@ class Coordinator:
             if worker_id:
                 with self._lock:
                     if worker_id in self.workers:
-                        self.workers[worker_id].is_alive = False
+                        worker = self.workers[worker_id]
+                        worker.is_alive = False
+                        # Unregister from auth manager
+                        if self.auth_manager:
+                            self.auth_manager.unregister_connection(worker.name)
                 logger.info(f"Worker {worker_id} disconnected")
             
             try:
@@ -469,6 +510,8 @@ class Coordinator:
                 except Exception as e:
                     logger.error(f"Failed to assign task to worker {worker.name}: {e}")
                     worker.is_alive = False
+                    # Unregister from auth manager
+                    self.auth_manager.unregister_connection(worker.name)
                     # Put task back in queue
                     self.task_queue.appendleft(task)
                     available_workers.remove(worker)
@@ -488,6 +531,9 @@ class Coordinator:
                         if time_since_heartbeat > self.worker_timeout:
                             logger.warning(f"Worker {worker.name} timed out")
                             worker.is_alive = False
+                            
+                            # Unregister from auth manager
+                            self.auth_manager.unregister_connection(worker.name)
                             
                             # Redistribute its tasks
                             for task_id, task in list(self.pending_tasks.items()):

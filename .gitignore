@@ -68,6 +68,9 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+website/
+heavy_tests/
+tests/
 
 # PyBuilder
 target/
@@ -132,3 +135,6 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Test runner script (local use only)
+run_tests.py
