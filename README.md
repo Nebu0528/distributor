@@ -2,20 +2,15 @@
 
 # Distributed Compute
 
-A Python library for distributing computational workloads across multiple devices on a local network. Turn your spare laptops, desktops, and servers into a unified computing cluster with just a few commands.
-
-Distributed Compute allows you to easily harness the power of multiple machines to process large workloads in parallel. Whether you're training ML models, processing data, or running simulations, this library makes distributed computing accessible without complex cluster management tools.
+A Python library for distributing computational workloads across multiple devices on a local network. Allows you to utilize your spare computers
+into a computing cluster to perform complex tasks that would require a lot of computing power and making it easy to connect devices locally.
 
 ## Features
 
-- **Simple Setup** - Get started with just 2 commands
-- **Interactive CLI** - Beautiful terminal interface with Rich UI (v0.1.4+)
-- **Live Worker Stats** - Monitor CPU usage, task counts, and active workers
-- **Automatic Load Balancing** - Tasks distributed to least-loaded workers
+- **Interactive CLI** - For monitoring worker health (CPU usage, task counts, active workers), and trigger Python script runs.
+- **Load Balancing** - Tasks distributed to least-loaded workers
 - **Fault Tolerance** - Automatic task redistribution on worker failure
-- **Real-time Monitoring** - Live progress tracking and status updates
-- **Clean API** - Pythonic interface similar to `multiprocessing.Pool`
-- **Plug & Play** - No complex configuration required
+- **Authentication** - Coordinator can now create a password that is required for the workers to connect to.
 
 ## Installation
 
@@ -76,100 +71,6 @@ print(results)  # [0, 1, 4, 9, 16, ...]
 
 That's it! Your computation is now running across all connected machines.
 
-## Usage Examples
-
-### Running the Demo
-
-See it in action with the built-in demo:
-
-```bash
-distcompute demo
-```
-
-This runs a Monte Carlo Pi estimation across 2 local workers with beautiful progress visualization.
-
-### Basic Usage
-
-```python
-from distributed_compute import Coordinator
-
-# Start coordinator
-coordinator = Coordinator(port=5555)
-coordinator.start()
-
-# Simple map operation
-def square(x):
-    return x ** 2
-
-results = coordinator.map(square, range(100))
-```
-
-### Progress Tracking (New in v0.1.2!)
-
-Track computation progress in real-time with callbacks:
-
-```python
-from distributed_compute import Coordinator
-
-coordinator = Coordinator(port=5555)
-coordinator.start()
-
-def process_task(x):
-    return x ** 2
-
-# Progress bar callback
-def show_progress(completed, total):
-    percent = (completed / total) * 100
-    print(f"Progress: {completed}/{total} ({percent:.1f}%)")
-
-# Per-task callback
-def on_task_done(task_idx, result):
-    print(f"Task {task_idx} completed: {result}")
-
-results = coordinator.map(
-    process_task, 
-    range(100),
-    on_progress=show_progress,      # Called after each task
-    on_task_complete=on_task_done   # Called with task details
-)
-```
-
-See `examples/progress_callback_example.py` for more advanced usage including ETA calculation and custom progress trackers.
-
-### ML Model Inference
-
-```python
-from distributed_compute import Coordinator
-
-coordinator = Coordinator(port=5555)
-coordinator.start()
-
-def predict(data_batch):
-    # Your ML inference code
-    return model.predict(data_batch)
-
-# Distribute inference across workers
-predictions = coordinator.map(predict, data_batches)
-```
-
-### Data Processing Pipeline
-
-```python
-from distributed_compute import Coordinator
-
-coordinator = Coordinator(port=5555)
-coordinator.start()
-
-def process_file(filepath):
-    # Your data processing logic
-    data = load_file(filepath)
-    result = transform(data)
-    return result
-
-# Process files in parallel
-results = coordinator.map(process_file, file_list)
-```
-
 ## CLI Commands
 
 The `distcompute` command provides several options:
@@ -185,7 +86,6 @@ distcompute worker [host] [port] [name]
 distcompute demo
 ```
 
-### Interactive Coordinator Mode (New in v0.1.4!)
 
 When you start the coordinator, it now launches an **interactive terminal** with a beautiful CLI interface (powered by Rich and prompt_toolkit):
 
@@ -205,19 +105,26 @@ Available Commands:
   exit           - Shutdown coordinator
 ```
 
-**Example task file** (`my_task.py`):
+**Example task file**:
 ```python
-def square(x):
-    return x * x
+def monte_carlo_pi(num_samples):
+    import random
+    inside = 0
+    for _ in range(num_samples):
+        x, y = random.random(), random.random()
+        if x*x + y*y <= 1.0:
+            inside += 1
+    return inside
 
-TASK_FUNC = square
-ITERABLE = range(20)
+TASK_FUNC = monte_carlo_pi
+ITERABLE = [1_000_000 for _ in range(20)]  # 20 tasks, each with 1 million samples
+
 ```
 
 **Running tasks interactively**:
 ```
 distcompute> status
-┌──────────────────────────────────────┐
+┌─────────────────────────────────────┐
 │         Cluster Status              │
 ├────────────────┬────────────────────┤
 │ Metric         │ Value              │
@@ -227,8 +134,8 @@ distcompute> status
 │ Tasks Completed│ 20                 │
 └────────────────┴────────────────────┘
 
-┌─────────────────────────────────────────────────────────┐
-│              Worker Details                             │
+┌────────────────────────────────────────────────────────┐
+│              Worker Details                            │
 ├──────────────┬────────────┬─────────────┬──────────────┤
 │ Worker       │ CPU %      │ Tasks Done  │ Active       │
 ├──────────────┼────────────┼─────────────┼──────────────┤
@@ -244,52 +151,6 @@ distcompute> exit
 Shutting down coordinator...
 ```
 
-The interactive mode features:
-- 🎨 **Beautiful UI** with bordered panels and tables (Claude/Gemini style)
-- 📊 **Worker Statistics** showing CPU usage, tasks completed, and active tasks
-- ⚡ **Direct Task Execution** - run Python files directly from the coordinator
-- 🔄 **Live Status Updates** - check cluster health anytime with `status` command
-
-### Progress Tracking (New in v0.1.2!)
-
-## Architecture
-
-```
-┌─────────────┐
-│ Coordinator │ ← Main machine
-└──────┬──────┘
-       │
-   ┌───┴────┬─────────┬─────────┐
-   │        │         │         │
-┌──▼──┐  ┌──▼──┐   ┌──▼──┐   ┌──▼──┐
-│ W-1 │  │ W-2 │   │ W-3 │   │ W-4 │  ← Worker machines
-└─────┘  └─────┘   └─────┘   └─────┘
-```
-
-- **Coordinator**: Manages task distribution and collects results
-- **Workers**: Execute tasks and report back to coordinator
-- **Load Balancing**: Tasks assigned to least-loaded workers
-- **Fault Tolerance**: Failed tasks automatically redistributed
-
-## Advanced Configuration
-
-### Custom Port
-
-```python
-coordinator = Coordinator(port=6000)
-```
-
-### Verbose Logging
-
-```python
-coordinator = Coordinator(port=5555, verbose=True)
-```
-
-### Worker with Custom Name
-
-```bash
-distcompute worker 192.168.1.100 5555 my-worker-name
-```
 
 ## Requirements
 
@@ -298,14 +159,6 @@ distcompute worker 192.168.1.100 5555 my-worker-name
 - Same Python environment on all workers (recommended)
 - `prompt_toolkit>=3.0.0` and `rich>=13.0.0` (auto-installed for interactive CLI)
 
-## Examples
-
-Check out the `examples/` directory for more:
-
-- `basic_usage.py` - Simple distributed map example
-- `ml_inference.py` - ML model inference simulation
-- `data_processing.py` - Data processing pipeline
-- `integration_test.py` - Full end-to-end test
 
 ## Troubleshooting
 
@@ -330,4 +183,4 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-Built to democratize distributed computing. Powered by Python's `cloudpickle` for seamless function serialization and `psutil` for resource monitoring.
+Powered by Python's `cloudpickle` for function serialization, `psutil` for resource monitoring, `Rich` and `prompt_toolkit` for providing a live cluster dashboard (CPU/Memory/Task stats).
