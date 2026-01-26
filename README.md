@@ -183,4 +183,6 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-Powered by Python's `cloudpickle` for function serialization, `psutil` for resource monitoring, `Rich` and `prompt_toolkit` for providing a live cluster dashboard (CPU/Memory/Task stats).
+This project is heavily inspired by `Dask`, and powered by Python's `cloudpickle` for function serialization, `psutil` for resource monitoring, `Rich` and `prompt_toolkit` for providing a live cluster dashboard (CPU/Memory/Task stats).
+
+
