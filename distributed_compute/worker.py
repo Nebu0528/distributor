@@ -59,6 +59,7 @@ class Worker:
         
         self._lock = threading.Lock()
         self._threads = []
+        self._send_lock = threading.Lock()  # Lock for sending messages
     
     def start(self, block: bool = False):
         """Start the worker and connect to the coordinator.
@@ -121,6 +122,26 @@ class Worker:
         
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            
+            # Increase socket buffer sizes for large transfers (2MB)
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 2 * 1024 * 1024)
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2 * 1024 * 1024)
+            except OSError:
+                pass  # Continue with system defaults
+            
+            # Enable TCP keepalive
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            except OSError:
+                pass
+            
+            # Set TCP_NODELAY to disable Nagle's algorithm for better latency
+            try:
+                self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                pass
+            
             self.socket.connect((self.coordinator_host, self.coordinator_port))
             logger.info("Connected to coordinator")
         except Exception as e:
@@ -173,7 +194,9 @@ class Worker:
                     "memory_available": memory.available,
                 }
                 
-                Protocol.send_message(self.socket, MessageType.HEARTBEAT, payload)
+                with self._send_lock:
+                    Protocol.send_message(self.socket, MessageType.HEARTBEAT, payload)
+                
                 time.sleep(self.heartbeat_interval)
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")
@@ -240,7 +263,9 @@ class Worker:
                 "execution_time": task.get_execution_time(),
             }
             
-            Protocol.send_message(self.socket, MessageType.TASK_RESULT, payload)
+            # Use send lock to prevent concurrent sends
+            with self._send_lock:
+                Protocol.send_message(self.socket, MessageType.TASK_RESULT, payload)
             
             with self._lock:
                 self.tasks_completed += 1
@@ -258,7 +283,8 @@ class Worker:
             }
             
             try:
-                Protocol.send_message(self.socket, MessageType.TASK_ERROR, payload)
+                with self._send_lock:
+                    Protocol.send_message(self.socket, MessageType.TASK_ERROR, payload)
             except:
                 pass
             

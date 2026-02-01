@@ -40,22 +40,6 @@ except Exception:
 # Disable noisy logs
 logging.getLogger('distributed_compute').setLevel(logging.ERROR)
 
-# Logo
-LOGO = """
-╔════════════════════════════════════════════════════════════════════════════════════════╗
-║                                                                                        ║
-║   ██████╗ ██╗███████╗████████╗██████╗ ██╗██████╗ ██╗   ██╗████████╗ ██████╗ ██████╗    ║
-║   ██╔══██╗██║██╔════╝╚══██╔══╝██╔══██╗██║██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗██╔══██╗   ║
-║   ██║  ██║██║███████╗   ██║   ██████╔╝██║██████╔╝██║   ██║   ██║   ██║   ██║██████╔╝   ║
-║   ██║  ██║██║╚════██║   ██║   ██╔══██╗██║██╔══██╗██║   ██║   ██║   ██║   ██║██╔══██╗   ║
-║   ██████╔╝██║███████║   ██║   ██║  ██║██║██████╔╝╚██████╔╝   ██║   ╚██████╔╝██║  ██║   ║
-║   ╚═════╝ ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝╚═════╝  ╚═════╝    ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ║
-║                                                                                        ║
-║                               Distributed Computing Platform                           ║
-║                                                                                        ║
-╚════════════════════════════════════════════════════════════════════════════════════════╝
-"""
-
 class Colors:
     """ANSI color codes for terminal output."""
     RESET = '\033[0m'
@@ -80,6 +64,15 @@ class Colors:
     # Background
     BG_RED = '\033[101m'
     BG_GREEN = '\033[102m'
+
+# Logo (defined after Colors class)
+LOGO = f"""
+      ○   ○           
+       ╲ ╱            {Colors.CYAN}{Colors.BOLD}DISTRIBUTED{Colors.RESET}
+   ○────{Colors.CYAN}●{Colors.RESET}───○         {Colors.CYAN}{Colors.BOLD}COMPUTE{Colors.RESET}
+       ╱ ╲            {Colors.CYAN}{Colors.BOLD}LOCALLY{Colors.RESET}
+      ○   ○
+"""
 
 
 def clear_screen():

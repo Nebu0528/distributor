@@ -92,6 +92,15 @@ class Coordinator:
         
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        
+        # Increase socket buffer sizes for large transfers (2MB)
+        try:
+            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 2 * 1024 * 1024)
+            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2 * 1024 * 1024)
+        except OSError:
+            # If buffer size fails, continue with system defaults
+            pass
+        
         self._server_socket.bind((self.host, self.port))
         self._server_socket.listen(5)
         
@@ -257,6 +266,26 @@ class Coordinator:
         while self._running:
             try:
                 client_socket, address = self._server_socket.accept()
+                
+                # Increase socket buffer sizes for large transfers (2MB)
+                try:
+                    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 2 * 1024 * 1024)
+                    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2 * 1024 * 1024)
+                except OSError:
+                    pass  # Continue with system defaults
+                
+                # Enable TCP keepalive
+                try:
+                    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                except OSError:
+                    pass
+                
+                # Set TCP_NODELAY to disable Nagle's algorithm
+                try:
+                    client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except OSError:
+                    pass
+                
                 logger.info(f"New connection from {address}")
                 
                 # Handle worker in a separate thread
