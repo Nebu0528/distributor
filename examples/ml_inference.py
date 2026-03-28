@@ -33,7 +33,7 @@ def main_coordinator():
     print("=== Distributed ML Inference Example ===\n")
     
     # Initialize coordinator
-    coordinator = Coordinator(port=5000, verbose=True)
+    coordinator = Coordinator(port=5555, verbose=True)
     coordinator.start_server()
     
     print("Coordinator started. Waiting for worker devices...")
@@ -76,11 +76,11 @@ def main_coordinator():
 def main_worker(coordinator_host):
     """Run inference worker."""
     print(f"Starting inference worker...")
-    print(f"Connecting to coordinator at {coordinator_host}:5000\n")
+    print(f"Connecting to coordinator at {coordinator_host}:5555\n")
     
     worker = Worker(
         coordinator_host=coordinator_host,
-        coordinator_port=5000,
+        coordinator_port=5555,
         max_concurrent_tasks=3,  # Process up to 3 batches concurrently
         name=f"ml-worker"
     )

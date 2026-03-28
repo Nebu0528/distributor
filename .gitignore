@@ -71,6 +71,7 @@ docs/_build/
 website/
 heavy_tests/
 tests/
+test_*.py
 
 # PyBuilder
 target/

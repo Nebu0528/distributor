@@ -11,6 +11,7 @@ into a computing cluster to perform complex tasks that would require a lot of co
 - **Load Balancing** - Tasks distributed to least-loaded workers
 - **Fault Tolerance** - Automatic task redistribution on worker failure
 - **Authentication** - Coordinator can now create a password that is required for the workers to connect to.
+- **Task Retry** - Configurable automatic retries for failed tasks before giving up
 
 ## Installation
 
@@ -152,6 +153,22 @@ Shutting down coordinator...
 ```
 
 
+## Task Retry
+
+Failed tasks can be automatically retried with the `max_retries` parameter:
+
+```python
+# Retry each failed task up to 3 times before giving up
+results = coordinator.map(heavy_computation, range(1000), max_retries=3)
+```
+
+When a task fails:
+- If `max_retries > 0` and retries remain, the task is re-queued and sent to an available worker
+- If all retries are exhausted, the result for that task is `None`
+- With the default `max_retries=0`, behavior is unchanged from previous versions
+
+This is useful for transient failures (network hiccups, temporary resource exhaustion, etc.).
+
 ## Requirements
 
 - Python 3.7 or higher
@@ -180,6 +197,26 @@ Contributions are welcome! This project aims to make distributed computing acces
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Changelog
+
+### v0.1.7
+- **Task Retry** - Added `max_retries` parameter to `coordinator.map()` for automatic retry of failed tasks
+- **Bug Fix** - Fixed version mismatch across `__init__.py`, `pyproject.toml`, and `setup.py`
+- **Bug Fix** - Fixed default port inconsistency (now consistently `5555` everywhere)
+- **Bug Fix** - Fixed `.gitignore` incorrectly excluding the `tests/` directory from git tracking
+
+### v0.1.6
+- Large payload handling with chunked transmission and zlib compression
+
+### v0.1.5
+- Password authentication for coordinator-worker connections
+
+### v0.1.4
+- Interactive CLI with Rich UI and worker statistics
+
+### v0.1.2
+- Progress callbacks (`on_progress`, `on_task_complete`)
 
 ## Acknowledgments
 

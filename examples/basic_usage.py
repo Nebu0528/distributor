@@ -17,7 +17,7 @@ def main_coordinator():
     """Run as coordinator (main device)."""
     print("Starting coordinator...")
     
-    coordinator = Coordinator(port=5000, verbose=True)
+    coordinator = Coordinator(port=5555, verbose=True)
     coordinator.start_server()
     
     print("\nWaiting for workers to connect...")
@@ -46,11 +46,11 @@ def main_coordinator():
 
 def main_worker(coordinator_host='localhost'):
     """Run as worker (secondary device)."""
-    print(f"Starting worker and connecting to {coordinator_host}:5000...")
+    print(f"Starting worker and connecting to {coordinator_host}:5555...")
     
     worker = Worker(
         coordinator_host=coordinator_host,
-        coordinator_port=5000,
+        coordinator_port=5555,
         max_concurrent_tasks=2,
         name=f"worker-example"
     )

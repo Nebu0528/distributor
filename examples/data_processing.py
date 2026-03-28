@@ -52,7 +52,7 @@ def main_coordinator():
     print("=== Distributed Data Processing Example ===\n")
     
     # Initialize coordinator
-    coordinator = Coordinator(port=5000, verbose=False)
+    coordinator = Coordinator(port=5555, verbose=False)
     coordinator.start_server()
     
     print("Coordinator started. Waiting for workers...\n")
@@ -97,11 +97,11 @@ def main_coordinator():
 def main_worker(coordinator_host):
     """Run data processing worker."""
     print(f"Starting data processing worker...")
-    print(f"Connecting to {coordinator_host}:5000\n")
+    print(f"Connecting to {coordinator_host}:5555\n")
     
     worker = Worker(
         coordinator_host=coordinator_host,
-        coordinator_port=5000,
+        coordinator_port=5555,
         max_concurrent_tasks=4,
         name=f"data-worker"
     )

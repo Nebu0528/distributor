@@ -45,7 +45,7 @@ class Coordinator:
     def __init__(
         self,
         host: str = "0.0.0.0",
-        port: int = 5000,
+        port: int = 5555,
         verbose: bool = False,
         worker_timeout: float = 30.0,
         password: Optional[str] = None,
@@ -145,6 +145,7 @@ class Coordinator:
         chunk_size: int = 1,
         on_progress: Optional[Callable[[int, int], None]] = None,
         on_task_complete: Optional[Callable[[int, Any], None]] = None,
+        max_retries: int = 0,
     ) -> List[Any]:
         """
         Distribute function execution across workers (similar to multiprocessing.Pool.map).
@@ -156,6 +157,7 @@ class Coordinator:
             chunk_size: Number of items per task (not yet implemented)
             on_progress: Callback function(completed, total) called after each task completes
             on_task_complete: Callback function(task_index, result) called when each task finishes
+            max_retries: Maximum number of times to retry a failed task (default: 0, no retries)
         
         Returns:
             List of results in the same order as the input iterable
@@ -172,6 +174,7 @@ class Coordinator:
         tasks = []
         for i, item in enumerate(iterable):
             task = Task(func=func, args=(item,), task_id=f"task-{i}")
+            task.max_retries = max_retries
             tasks.append(task)
             
             with self._lock:
@@ -196,9 +199,23 @@ class Coordinator:
                 task_id, result, error = self.result_queue.get(timeout=1.0)
                 
                 if error:
-                    logger.error(f"Task {task_id[:8]} failed: {error}")
-                    # For now, store None for failed tasks
-                    results[task_id] = None
+                    # Check if the task can be retried
+                    task_obj = self.completed_tasks.get(task_id)
+                    if task_obj and task_obj.can_retry():
+                        task_obj.retry_count += 1
+                        task_obj.status = TaskStatus.PENDING
+                        task_obj.error = None
+                        task_obj.worker_id = None
+                        logger.info(f"Retrying task {task_id[:8]} (attempt {task_obj.retry_count}/{task_obj.max_retries})")
+                        with self._lock:
+                            del self.completed_tasks[task_id]
+                            self.pending_tasks[task_id] = task_obj
+                            self.task_queue.append(task_obj)
+                        self._distribute_tasks()
+                        continue
+                    else:
+                        logger.error(f"Task {task_id[:8]} failed: {error}")
+                        results[task_id] = None
                 else:
                     results[task_id] = result
                 

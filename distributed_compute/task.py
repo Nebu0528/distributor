@@ -41,6 +41,8 @@ class Task:
         self.created_at = time.time()
         self.started_at = None
         self.completed_at = None
+        self.retry_count = 0
+        self.max_retries = 0
     
     def execute(self) -> Any:
         """
@@ -74,6 +76,7 @@ class Task:
             "args": self.args,
             "kwargs": self.kwargs,
             "status": self.status.value,
+            "retry_count": self.retry_count,
         }
     
     def get_execution_time(self) -> float:
@@ -81,6 +84,10 @@ class Task:
         if self.started_at and self.completed_at:
             return self.completed_at - self.started_at
         return 0.0
+    
+    def can_retry(self) -> bool:
+        """Check if the task can be retried."""
+        return self.retry_count < self.max_retries
     
     def __repr__(self):
         return f"Task(id={self.task_id[:8]}, status={self.status.value}, func={self.func.__name__})"
