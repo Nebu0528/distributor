@@ -116,9 +116,24 @@ Tested on an Apple M2 MacBook (8 cores) with 4 workers, using three standard par
 
 Near-linear scaling with 4 workers (theoretical max 4.0x). Overhead comes from task serialization and network coordination.
 
-Run the benchmark yourself:
+### Stress Test: N-Body Gravity Simulation
+
+Heavier workload — 48 tasks of O(n²) pairwise gravity with 500 particles × 100 timesteps each:
+
+| Workers | Time | Speedup | Efficiency |
+|---------|------|---------|------------|
+| 1 (sequential) | 179.1s | 1.00x | 100.0% |
+| 2 | 145.7s | 1.23x | 61.5% |
+| 4 | 102.7s | 1.74x | 43.6% |
+| 6 | 81.6s | 2.20x | 36.6% |
+| 8 | 78.8s | 2.27x | 28.4% |
+
+Diminishing returns after 6 workers are due to the M2's asymmetric cores (4 performance + 4 efficiency) — slower cores become the bottleneck on heavy tasks. On machines with identical cores or across multiple machines, scaling would be more linear.
+
+Run the benchmarks yourself:
 ```bash
-python3 benchmark/benchmark.py 4    # 4 = number of workers
+python3 benchmark/benchmark.py 4       # standard suite (NAS EP, Mandelbrot, SHA-256)
+python3 benchmark/stress_test.py        # N-body stress test with scaling curve
 ```
 
 ## Requirements
