@@ -1,4 +1,4 @@
-[![PyPI](https://img.shields.io/pypi/v/distributed-compute-locally.svg)](https://pypi.org/project/distributed-compute-locally/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI](https://img.shields.io/pypi/v/distributed-compute-locally.svg)](https://pypi.org/project/distributed-compute-locally/) [![Downloads](https://static.pepy.tech/badge/distributed-compute-locally)](https://pepy.tech/project/distributed-compute-locally) [![Downloads](https://static.pepy.tech/badge/distributed-compute-locally/month)](https://pepy.tech/project/distributed-compute-locally) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # Distributed Compute Locally
 
